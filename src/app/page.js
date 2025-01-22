@@ -6,7 +6,7 @@ import Controller from './controller.js'
 import { connectMQTT, mqttclient, subscribeMQTT, publishMQTT } from './MQTT.js'
 
 const MQTT_CTRL_TOPIC = "om/vrgoogle";
-const MQTT_ROBOT_STATE_TOPIC = "om/real";
+const MQTT_ROBOT_STATE_TOPIC = "om/vrgoogle";
 
 let publish = false //VRモードに移行するまではMQTTをpublishしない（かつ、ロボット情報を取得するまで）
 let receive_state = true // ロボットの状態を受信してるかのフラグ
@@ -55,11 +55,11 @@ export default function Home() {
 
   const [test_pos, set_test_pos] = React.useState({ x: 0, y: 0, z: 0 })
 
-  const [c_pos_x, set_c_pos_x] = React.useState(0)
-  const [c_pos_y, set_c_pos_y] = React.useState(0.25)
-  const [c_pos_z, set_c_pos_z] = React.useState(0.4)
+  const [c_pos_x, set_c_pos_x] = React.useState(0.15)
+  const [c_pos_y, set_c_pos_y] = React.useState(0.33)
+  const [c_pos_z, set_c_pos_z] = React.useState(-0.67)
   const [c_deg_x, set_c_deg_x] = React.useState(0)
-  const [c_deg_y, set_c_deg_y] = React.useState(0)
+  const [c_deg_y, set_c_deg_y] = React.useState(170)
   const [c_deg_z, set_c_deg_z] = React.useState(0)
 
   const [wrist_rot_x, set_wrist_rot_x] = React.useState(0)
@@ -108,6 +108,25 @@ export default function Home() {
     return v;
   }
 
+  function limit180(j){
+    j =  j%360;
+    if (j > 180){
+      j -= 360;
+    }
+    return j;
+  }
+
+
+  function joint2rotate(js){
+    let j1 = limit180(js[0]*360/4096+10);
+    let j2 = limit180(js[1]*360/4096+180);
+    let j3 = limit180(js[2]*360/4096 -90);
+    let j4 = limit180(js[3]*360/4096 +110);
+    let j5 = ((js[4]-1270)/4096)*25%25;
+
+    return [j1,j2,j3,j4,j5];
+  }
+
   function sendCurrentMQTT(rt) {
     if ((mqttclient != null) && publish) {
 
@@ -123,8 +142,8 @@ export default function Home() {
         rotate: [j1, j2, j3, j4, tool],
 //        raw: [rt[1],to360(rt[1],90,-90)]
         raw: [rt[3],to360(rt[3],180,0)]
-      });
-      let ret = publishMQTT(MQTT_CTRL_TOPIC, msg)
+      });     
+      // let ret = publishMQTT(MQTT_CTRL_TOPIC, msg)
     } else {
       publishMQTT("om/pub", "mode:"+window.vr_mode);
     }
@@ -656,7 +675,8 @@ export default function Home() {
             if (time - this.el.lastsent > 200){
               set_rotate((cur)=>{
                 if(cur.length>0){
-                  sendCurrentMQTT(cur);
+//                  Viewer ではこれをなくす
+//                  sendCurrentMQTT(cur);
                 }
                 return cur;
               })
@@ -703,10 +723,18 @@ export default function Home() {
             if (topic == MQTT_ROBOT_STATE_TOPIC) {
               if (vr_mode == false) {
                 let data = JSON.parse(message.toString())
-                //console.log("Receive_State", data)
-                const dt = q2joint(data)
+//                console.log("Receive_State", data.rotate)
+
+                const dt = joint2rotate(data.rotate)
+                console.log("Joints",dt)
+//                const dt = q2joint(data)
                 //                        console.log("Joints", dt)
 //                set_rotate(dt)
+                set_j1_rotate(dt[0])
+                set_j2_rotate(dt[1])
+                set_j3_rotate(dt[2])
+                set_j4_rotate(dt[3])
+                set_j7_rotate(dt[4])
                 receive_state = true;
 
                 // ここで定期的に設定が必要
@@ -740,6 +768,7 @@ export default function Home() {
   }
 
   if (rendered) {
+//    <a-sphere position={edit_pos(target)} scale="0.012 0.012 0.012" color="yellow" visible={true}></a-sphere>
     return (
       <>
         <a-scene scene xr-mode-ui="XRMode: ar">
@@ -752,7 +781,6 @@ export default function Home() {
           <a-entity id="rig" position={`${c_pos_x} ${c_pos_y} ${c_pos_z}`} rotation={`${c_deg_x} ${c_deg_y} ${c_deg_z}`}>
             <a-camera id="camera" cursor="rayOrigin: mouse;" position="0 0 0"></a-camera>
           </a-entity>
-          <a-sphere position={edit_pos(target)} scale="0.012 0.012 0.012" color="yellow" visible={true}></a-sphere>
           <a-box position={edit_pos(test_pos)} scale="0.03 0.03 0.03" color="green" visible={box_vis}></a-box>
           <Line pos1={{ x: 1, y: 0.0001, z: 1 }} pos2={{ x: -1, y: 0.0001, z: -1 }} visible={cursor_vis} color="white"></Line>
           <Line pos1={{ x: 1, y: 0.0001, z: -1 }} pos2={{ x: -1, y: 0.0001, z: 1 }} visible={cursor_vis} color="white"></Line>
